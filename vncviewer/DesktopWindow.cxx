@@ -969,7 +969,7 @@ int DesktopWindow::handle(int event)
       }
 #endif
     }
-    if (fullscreen_active()) {
+    if (fullscreen_active() && edgeScroll) {
       // calculate width of "edge" regions
       edge_scroll_size_x = w() / EDGE_SCROLL_SIZE;
       edge_scroll_size_y = h() / EDGE_SCROLL_SIZE;

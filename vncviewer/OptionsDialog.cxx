@@ -312,6 +312,7 @@ void OptionsDialog::loadOptions(void)
   /* Input */
   viewOnlyCheckbox->value(viewOnly);
   emulateMBCheckbox->value(emulateMiddleButton);
+  edgeScrollCheckbox->value(edgeScroll);
   acceptClipboardCheckbox->value(acceptClipboard);
 #if !defined(WIN32) && !defined(__APPLE__)
   setPrimaryCheckbox->value(setPrimary);
@@ -463,6 +464,7 @@ void OptionsDialog::storeOptions(void)
   /* Input */
   viewOnly.setParam(viewOnlyCheckbox->value());
   emulateMiddleButton.setParam(emulateMBCheckbox->value());
+  edgeScroll.setParam(edgeScrollCheckbox->value());
   acceptClipboard.setParam(acceptClipboardCheckbox->value());
 #if !defined(WIN32) && !defined(__APPLE__)
   setPrimary.setParam(setPrimaryCheckbox->value());
@@ -919,6 +921,12 @@ void OptionsDialog::createInputPage(int tx, int ty, int tw, int th)
                                                      CHECK_MIN_WIDTH,
                                                      CHECK_HEIGHT,
                                                      _("Emulate middle mouse button")));
+    ty += CHECK_HEIGHT + TIGHT_MARGIN;
+
+    edgeScrollCheckbox = new Fl_Check_Button(LBLRIGHT(tx, ty,
+                                                      CHECK_MIN_WIDTH,
+                                                      CHECK_HEIGHT,
+                                                      _("Scroll when mouse reaches screen edge (fullscreen)")));
     ty += CHECK_HEIGHT + TIGHT_MARGIN;
 
     alwaysCursorCheckbox = new Fl_Check_Button(LBLRIGHT(tx, ty,

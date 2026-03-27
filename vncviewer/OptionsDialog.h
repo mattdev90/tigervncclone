@@ -125,6 +125,7 @@ protected:
   Fl_Check_Button *viewOnlyCheckbox;
   Fl_Group *mouseGroup;
   Fl_Check_Button *emulateMBCheckbox;
+  Fl_Check_Button *edgeScrollCheckbox;
   Fl_Check_Button *alwaysCursorCheckbox;
   Fl_Choice *cursorTypeChoice;
   Fl_Group *keyboardGroup;
