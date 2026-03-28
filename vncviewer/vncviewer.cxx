@@ -33,6 +33,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <list>
+#include <vector>
 
 #ifdef WIN32
 #include <core/winerrno.h>
@@ -669,6 +671,77 @@ int main(int argc, char** argv)
     }
   } catch (std::exception& e) {
     vlog.error("%s", e.what());
+  }
+
+  /* Ensure profiles directory exists */
+  try {
+    std::string profilesDir = getProfilesDir();
+#ifdef _WIN32
+    wchar_t wdir[PATH_MAX];
+    fl_utf8towc(profilesDir.c_str(), (unsigned)profilesDir.size()+1,
+                wdir, PATH_MAX);
+    CreateDirectoryW(wdir, nullptr);
+#else
+    mkdir(profilesDir.c_str(), 0755);
+#endif
+  } catch (std::exception& e) {
+    vlog.error(_("Could not create profiles directory: %s"), e.what());
+  }
+
+  /* Migrate old server history to profiles (one-time, only if no profiles exist) */
+  try {
+    std::vector<ProfileInfo> existing = loadAllProfiles();
+
+    if (existing.empty()) {
+      std::list<std::string> history;
+
+#ifdef _WIN32
+      history = loadHistoryFromRegKey();
+#else
+      const char* stateDir = core::getvncstatedir();
+      if (stateDir != nullptr) {
+        char histpath[PATH_MAX];
+        snprintf(histpath, sizeof(histpath), "%s/tigervnc.history", stateDir);
+        FILE* hf = fopen(histpath, "r");
+        if (hf) {
+          char hline[256];
+          while (fgets(hline, sizeof(hline), hf)) {
+            int hlen = strlen(hline);
+            if (hlen > 0 && hline[hlen-1] == '\n') hline[hlen-1] = '\0';
+            if (hline[0] != '\0')
+              history.push_back(hline);
+          }
+          fclose(hf);
+        }
+      }
+#endif
+
+      for (const std::string& server : history) {
+        try {
+          saveProfile(server.c_str(), nullptr, nullptr);
+        } catch (std::exception& e) {
+          vlog.error(_("Failed to migrate server \"%s\": %s"),
+                     server.c_str(), e.what());
+        }
+      }
+
+      // Also migrate the last-used server from default config if not in history
+      if (defaultServerName[0] != '\0') {
+        bool found = false;
+        for (const std::string& s : history) {
+          if (s == defaultServerName) { found = true; break; }
+        }
+        if (!found) {
+          try {
+            saveProfile(defaultServerName, nullptr, nullptr);
+          } catch (std::exception& e) {
+            vlog.error(_("Failed to migrate default server: %s"), e.what());
+          }
+        }
+      }
+    }
+  } catch (std::exception& e) {
+    vlog.error(_("Failed to migrate server history: %s"), e.what());
   }
 
   for (int i = 1; i < argc;) {

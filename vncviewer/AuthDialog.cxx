@@ -31,7 +31,6 @@
 #include "fltk/layout.h"
 
 #include "AuthDialog.h"
-#include "parameters.h"
 #include "i18n.h"
 
 /* xpm:s predate const, so they have invalid definitions */
@@ -99,18 +98,14 @@ AuthDialog::AuthDialog(bool secure_, bool needsUser, bool needsPassword)
     passwd->align(FL_ALIGN_LEFT | FL_ALIGN_TOP);
     y += INPUT_HEIGHT + INNER_MARGIN;
 
-    if (reconnectOnError) {
-      keepPasswdCheckbox = new Fl_Check_Button(LBLRIGHT(x, y,
-                                                        CHECK_MIN_WIDTH,
-                                                        CHECK_HEIGHT,
-                                                        _("Keep password for reconnect")));
-      y += CHECK_HEIGHT + INNER_MARGIN;
-    } else {
-      keepPasswdCheckbox = nullptr;
-    }
+    savePasswdCheckbox = new Fl_Check_Button(LBLRIGHT(x, y,
+                                                      CHECK_MIN_WIDTH,
+                                                      CHECK_HEIGHT,
+                                                      _("Save password")));
+    y += CHECK_HEIGHT + INNER_MARGIN;
   } else {
     passwd = nullptr;
-    keepPasswdCheckbox = nullptr;
+    savePasswdCheckbox = nullptr;
   }
 
   x = w() - OUTER_MARGIN;
@@ -160,10 +155,10 @@ std::string AuthDialog::getPassword()
   return "";
 }
 
-bool AuthDialog::getKeepPassword()
+bool AuthDialog::getSavePassword()
 {
-  if (keepPasswdCheckbox)
-    return keepPasswdCheckbox->value();
+  if (savePasswdCheckbox)
+    return savePasswdCheckbox->value();
   return false;
 }
 

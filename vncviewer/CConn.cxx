@@ -69,8 +69,7 @@
 #include "parameters.h"
 #include "vncviewer.h"
 
-std::string CConn::savedUsername;
-std::string CConn::savedPassword;
+std::string CConn::activeProfilePath;
 
 #ifdef WIN32
 #include "win32.h"
@@ -304,8 +303,7 @@ void CConn::processNextMsg(core::Timer*)
     vlog.info("%s", e.what());
     disconnect();
   } catch (rfb::auth_error& e) {
-    savedUsername.clear();
-    savedPassword.clear();
+    activeProfilePath.clear();
     vlog.error(_("Authentication failed: %s"), e.what());
     abort_connection(_("Failed to authenticate with the server. Reason "
                        "given by the server:\n\n%s"), e.what());
@@ -355,15 +353,14 @@ void CConn::getUserPasswd(bool secure, std::string *user,
     return;
   }
 
-  if (user && !savedUsername.empty() && !savedPassword.empty()) {
-    *user = savedUsername;
-    *password = savedPassword;
-    return;
-  }
-
-  if (!user && !savedPassword.empty()) {
-    *password = savedPassword;
-    return;
+  // Try loading password from active profile
+  if (!activeProfilePath.empty()) {
+    std::string savedPwd = loadPasswordFromProfile(activeProfilePath.c_str());
+    if (!savedPwd.empty()) {
+      if (password)
+        *password = savedPwd;
+      return;
+    }
   }
 
   if (!user && passwordFileName[0]) {
@@ -389,21 +386,23 @@ void CConn::getUserPasswd(bool secure, std::string *user,
   ret_val = d.result();
 
   if (ret_val == 1) {
-    bool keepPasswd;
+    bool wantSave = d.getSavePassword();
 
-    if (reconnectOnError)
-      keepPasswd = d.getKeepPassword();
-    else
-      keepPasswd = false;
-
-    if (user) {
+    if (user)
       *user = d.getUser();
-      if (keepPasswd)
-        savedUsername = d.getUser();
-    }
     *password = d.getPassword();
-    if (keepPasswd)
-      savedPassword = d.getPassword();
+
+    if (wantSave && !activeProfilePath.empty()) {
+      try {
+        ProfileInfo info = loadProfile(activeProfilePath.c_str());
+        saveProfileToFile(activeProfilePath.c_str(),
+                          info.serverName.c_str(),
+                          info.profileName.empty() ? nullptr : info.profileName.c_str(),
+                          password->c_str());
+      } catch (std::exception& e) {
+        vlog.error(_("Failed to update profile with password: %s"), e.what());
+      }
+    }
   }
 
   if (ret_val != 1)

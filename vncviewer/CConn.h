@@ -117,8 +117,8 @@ private:
   size_t updateStartPos;
   unsigned long long bpsEstimate;
 
-  static std::string savedUsername;
-  static std::string savedPassword;
+public:
+  static std::string activeProfilePath;
 };
 
 #endif

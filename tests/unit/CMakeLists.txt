@@ -48,3 +48,8 @@ add_executable(emulatemb emulatemb.cxx ../../vncviewer/EmulateMB.cxx)
 target_include_directories(emulatemb SYSTEM PUBLIC ${Intl_INCLUDE_DIR})
 target_link_libraries(emulatemb core ${Intl_LIBRARIES} GTest::gtest_main)
 gtest_discover_tests(emulatemb)
+
+add_executable(profile profile.cxx ../../vncviewer/parameters.cxx)
+target_include_directories(profile SYSTEM PUBLIC ${FLTK_INCLUDE_DIR} ${Intl_INCLUDE_DIR})
+target_link_libraries(profile core rfb network ${FLTK_LIBRARIES} ${Intl_LIBRARIES} GTest::gtest_main)
+gtest_discover_tests(profile)

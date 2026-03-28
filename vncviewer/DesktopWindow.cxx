@@ -192,7 +192,7 @@ DesktopWindow::DesktopWindow(int w, int h, CConn* cc_)
     size(w, h);
   }
 
-  if (fullScreen) {
+  if (fullScreen || fullscreenOnConnect) {
     // Hack: Window managers seem to be rather crappy at respecting
     // fullscreen hints on initial windows. So on X11 we'll have to
     // wait until after we've been mapped.

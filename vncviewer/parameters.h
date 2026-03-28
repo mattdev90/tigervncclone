@@ -24,13 +24,12 @@
 
 #include "MonitorIndicesParameter.h"
 
+#include <string>
+#include <vector>
+
 #ifdef _WIN32
 #include <list>
-#include <string>
 #endif
-
-#define SERVER_HISTORY_SIZE 20
-
 
 extern core::IntParameter pointerEventInterval;
 extern core::BoolParameter emulateMiddleButton;
@@ -53,6 +52,7 @@ extern core::IntParameter qualityLevel;
 
 extern core::BoolParameter maximize;
 extern core::BoolParameter fullScreen;
+extern core::BoolParameter fullscreenOnConnect;
 extern core::EnumParameter fullScreenMode;
 extern core::BoolParameter fullScreenAllMonitors; // deprecated
 extern MonitorIndicesParameter fullScreenSelectedMonitors;
@@ -83,12 +83,33 @@ extern core::BoolParameter reconnectOnError;
 extern core::StringParameter via;
 #endif
 
+struct ProfileInfo {
+  std::string serverName;
+  std::string profileName;  // empty = use serverName as display name
+  std::string filePath;     // full path to .tigervnc file
+  bool hasPassword;         // true if Password= field is present
+};
+
+std::string getProfilesDir();
+std::string getProfileFilename(const char* host, int port);
+
+std::string obfuscatedPasswordToHex(const std::string& password);
+std::string hexToObfuscatedPassword(const std::string& hex);
+
+void saveProfileToFile(const char* filepath, const char* servername,
+                       const char* profileName, const char* password);
+ProfileInfo loadProfile(const char* filepath);
+std::string loadPasswordFromProfile(const char* filepath);
+std::vector<ProfileInfo> loadAllProfiles();
+void deleteProfile(const char* filepath);
+void saveProfile(const char* servername, const char* profileName,
+                 const char* password);
+
 void saveViewerParameters(const char *filename, const char *servername=nullptr);
 char* loadViewerParameters(const char *filename);
 
 #ifdef _WIN32
 std::list<std::string> loadHistoryFromRegKey();
-void saveHistoryToRegKey(const std::list<std::string>& serverHistory);
 #endif
 
 void migrateDeprecatedOptions();

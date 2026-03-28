@@ -4,13 +4,11 @@ endif()
 
 add_executable(vncviewer
   fltk/Fl_Monitor_Arrangement.cxx
-  fltk/Fl_Suggestion_Item_.cxx
-  fltk/Fl_Suggestion_Window_.cxx
-  fltk/Fl_Suggestion_Input.cxx
   fltk/Fl_Navigation.cxx
   fltk/event_dispatch_handler.cxx
   fltk/theme.cxx
   AuthDialog.cxx
+  ProfileEditDialog.cxx
   BaseTouchHandler.cxx
   CConn.cxx
   DesktopWindow.cxx
@@ -26,7 +24,7 @@ add_executable(vncviewer
   MonitorIndicesParameter.cxx
   vncviewer.cxx)
 
-if(WIN32 AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(WIN32)
   set_target_properties(vncviewer PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 

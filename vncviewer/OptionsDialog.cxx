@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <list>
 
+#include <core/LogWriter.h>
 #include <core/string.h>
 
 #include <rfb/encodings.h>
@@ -37,6 +38,7 @@
 #endif
 #endif
 
+#include "CConn.h"
 #include "OptionsDialog.h"
 #include "ShortcutHandler.h"
 #include "i18n.h"
@@ -61,6 +63,8 @@
 #include <FL/Fl_Toggle_Button.H>
 #include <FL/Fl_Int_Input.H>
 #include <FL/Fl_Choice.H>
+
+static core::LogWriter vlog("OptionsDialog");
 
 std::map<OptionsCallback*, void*> OptionsDialog::callbacks;
 
@@ -338,6 +342,8 @@ void OptionsDialog::loadOptions(void)
   handleModifier(nullptr, this);
 
   /* Display */
+  fullscreenOnConnectCheckbox->value(fullscreenOnConnect);
+
   if (!fullScreen) {
     windowedButton->setonly();
   } else {
@@ -494,6 +500,8 @@ void OptionsDialog::storeOptions(void)
   shortcutModifiers.setParam(modifierList);
 
   /* Display */
+  fullscreenOnConnect.setParam(fullscreenOnConnectCheckbox->value());
+
   if (windowedButton->value()) {
     fullScreen.setParam(false);
   } else {
@@ -1126,6 +1134,12 @@ void OptionsDialog::createDisplayPage(int tx, int ty, int tw, int th)
 
   orig_tx = tx;
 
+  fullscreenOnConnectCheckbox =
+    new Fl_Check_Button(LBLRIGHT(tx, ty,
+                                 CHECK_MIN_WIDTH, CHECK_HEIGHT,
+                                 _("Fullscreen on connect")));
+  ty += CHECK_HEIGHT + TIGHT_MARGIN;
+
   /* Display mode */
   ty += GROUP_LABEL_OFFSET;
   displayModeGroup = new Fl_Group(tx, ty, width, 0, _("Display mode"));
@@ -1379,6 +1393,24 @@ void OptionsDialog::handleOK(Fl_Widget* /*widget*/, void *data)
   dialog->hide();
 
   dialog->storeOptions();
+
+  // Save settings immediately after they change.
+  // If connected to a profile, save into that profile file (preserving
+  // ServerName/ProfileName/Password). Otherwise save to global defaults.
+  try {
+    if (!CConn::activeProfilePath.empty()) {
+      ProfileInfo info = loadProfile(CConn::activeProfilePath.c_str());
+      std::string pwd = loadPasswordFromProfile(CConn::activeProfilePath.c_str());
+      saveProfileToFile(CConn::activeProfilePath.c_str(),
+                        info.serverName.c_str(),
+                        info.profileName.empty() ? nullptr : info.profileName.c_str(),
+                        pwd.empty() ? nullptr : pwd.c_str());
+    } else {
+      saveViewerParameters(nullptr);
+    }
+  } catch (std::exception& e) {
+    vlog.error(_("Failed to save settings: %s"), e.what());
+  }
 }
 
 int OptionsDialog::fltk_event_handler(int event)

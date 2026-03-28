@@ -1,2 +1,5 @@
 build/
 *.png
+.claude/
+ORCHESTRATOR.md
+docs/superpowers/

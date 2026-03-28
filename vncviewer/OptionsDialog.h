@@ -149,6 +149,7 @@ protected:
   Fl_Box *shortcutsText;
 
   /* Display */
+  Fl_Check_Button *fullscreenOnConnectCheckbox;
   Fl_Group *displayModeGroup;
   Fl_Round_Button *windowedButton;
   Fl_Round_Button *currentMonitorButton;

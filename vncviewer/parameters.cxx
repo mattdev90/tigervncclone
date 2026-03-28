@@ -27,6 +27,7 @@
 #endif
 
 #ifdef _WIN32
+#include <winsock2.h>
 #include <windows.h>
 #endif
 
@@ -37,8 +38,11 @@
 #include <core/string.h>
 #include <core/xdgdirs.h>
 
+#include <network/TcpSocket.h>
+
 #include <rfb/CConnection.h>
 #include <rfb/SecurityClient.h>
+#include <rfb/obfuscate.h>
 
 #include <FL/fl_utf8.h>
 
@@ -47,6 +51,11 @@
 #include <limits.h>
 #include <errno.h>
 #include <assert.h>
+
+#ifndef _WIN32
+#include <dirent.h>
+#include <sys/stat.h>
+#endif
 
 #include "i18n.h"
 
@@ -151,6 +160,10 @@ core::BoolParameter
   maximize("Maximize", "Maximize viewer window", false);
 core::BoolParameter
   fullScreen("FullScreen", "Enable full screen", false);
+core::BoolParameter
+  fullscreenOnConnect("FullscreenOnConnect",
+                      "Automatically enter full screen when connecting",
+                      true);
 core::EnumParameter
   fullScreenMode("FullScreenMode",
                  "Specify which monitors to use when in full screen. "
@@ -274,6 +287,7 @@ static core::VoidParameter* parameterArray[] = {
   &qualityLevel,
   /* Display */
   &fullScreen,
+  &fullscreenOnConnect,
   &fullScreenMode,
   &fullScreenSelectedMonitors,
   /* Input */
@@ -501,39 +515,6 @@ static void removeValue(const char* _name, HKEY* hKey) {
   }
 }
 
-void saveHistoryToRegKey(const std::list<std::string>& serverHistory)
-{
-  HKEY hKey;
-  LONG res = RegCreateKeyExW(HKEY_CURRENT_USER,
-                             L"Software\\TigerVNC\\vncviewer\\history", 0, nullptr,
-                             REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr,
-                             &hKey, nullptr);
-
-  if (res != ERROR_SUCCESS)
-    throw core::win32_error(_("Failed to create registry key"), res);
-
-  unsigned index = 0;
-  assert(SERVER_HISTORY_SIZE < 100);
-  char indexString[3];
-
-  try {
-    for (const std::string& entry : serverHistory) {
-      if (index > SERVER_HISTORY_SIZE)
-        break;
-      snprintf(indexString, 3, "%d", index);
-      setKeyString(indexString, entry.c_str(), &hKey);
-      index++;
-    }
-  } catch (std::exception& e) {
-    RegCloseKey(hKey);
-    throw;
-  }
-
-  res = RegCloseKey(hKey);
-  if (res != ERROR_SUCCESS)
-    throw core::win32_error(_("Failed to close registry key"), res);
-}
-
 static void saveToReg(const char* servername) {
   
   HKEY hKey;
@@ -734,6 +715,306 @@ static char* loadFromReg() {
 }
 #endif // _WIN32
 
+
+std::string getProfileFilename(const char* host, int port)
+{
+  std::string filename(host);
+  for (char& c : filename) {
+    if (c == ':' || c == '/' || c == '\\' || c == '*' ||
+        c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+      c = '_';
+  }
+  filename += "_" + std::to_string(port) + ".tigervnc";
+  return filename;
+}
+
+std::string obfuscatedPasswordToHex(const std::string& password)
+{
+  if (password.empty())
+    return "";
+  std::vector<uint8_t> obfPwd = rfb::obfuscate(password.c_str());
+  std::string hex;
+  hex.reserve(obfPwd.size() * 2);
+  for (uint8_t b : obfPwd) {
+    char buf[3];
+    snprintf(buf, sizeof(buf), "%02x", b);
+    hex += buf;
+  }
+  return hex;
+}
+
+std::string hexToObfuscatedPassword(const std::string& hex)
+{
+  if (hex.empty())
+    return "";
+  if (hex.size() % 2 != 0)
+    return "";
+  std::vector<uint8_t> obfPwd;
+  obfPwd.reserve(hex.size() / 2);
+  for (size_t i = 0; i < hex.size(); i += 2) {
+    unsigned int b;
+    if (sscanf(hex.c_str() + i, "%02x", &b) != 1)
+      return "";
+    obfPwd.push_back(static_cast<uint8_t>(b));
+  }
+  try {
+    return rfb::deobfuscate(obfPwd.data(), obfPwd.size());
+  } catch (std::exception&) {
+    return "";
+  }
+}
+
+std::string getProfilesDir()
+{
+  const char* configDir = core::getvncconfigdir();
+  if (configDir == nullptr)
+    throw std::runtime_error(_("Could not determine VNC config directory path"));
+  return std::string(configDir) + "/profiles";
+}
+
+
+void saveProfileToFile(const char* filepath, const char* servername,
+                       const char* profileName, const char* password)
+{
+  FILE* f = fopen(filepath, "w+");
+  if (!f)
+    throw core::posix_error(
+      core::format(_("Could not open \"%s\""), filepath), errno);
+
+  const size_t buffersize = 256;
+  char encodingBuffer[buffersize];
+
+  fprintf(f, "%s\n", IDENTIFIER_STRING);
+  fprintf(f, "\n");
+
+  if (!encodeValue(servername, encodingBuffer, buffersize)) {
+    fclose(f);
+    throw std::runtime_error(
+      core::format(_("Failed to save \"%s\": %s"), "ServerName",
+                   _("Could not encode parameter")));
+  }
+  fprintf(f, "ServerName=%s\n", encodingBuffer);
+
+  if (profileName != nullptr && profileName[0] != '\0') {
+    if (!encodeValue(profileName, encodingBuffer, buffersize)) {
+      fclose(f);
+      throw std::runtime_error(
+        core::format(_("Failed to save \"%s\": %s"), "ProfileName",
+                     _("Could not encode parameter")));
+    }
+    fprintf(f, "ProfileName=%s\n", encodingBuffer);
+  }
+
+  if (password != nullptr && password[0] != '\0') {
+    std::string hex = obfuscatedPasswordToHex(password);
+    fprintf(f, "Password=%s\n", hex.c_str());
+  }
+
+  for (core::VoidParameter* param : parameterArray) {
+    if (param->isDefault())
+      continue;
+    if (!encodeValue(param->getValueStr().c_str(), encodingBuffer, buffersize)) {
+      fclose(f);
+      throw std::runtime_error(
+        core::format(_("Failed to save \"%s\": %s"), param->getName(),
+                     _("Could not encode parameter")));
+    }
+    fprintf(f, "%s=%s\n", param->getName(), encodingBuffer);
+  }
+
+  fclose(f);
+}
+
+ProfileInfo loadProfile(const char* filepath)
+{
+  ProfileInfo info;
+  info.filePath = filepath;
+  info.hasPassword = false;
+
+  FILE* f = fopen(filepath, "r");
+  if (!f)
+    throw core::posix_error(
+      core::format(_("Could not open \"%s\""), filepath), errno);
+
+  const size_t buffersize = 256;
+  char line[buffersize];
+  char decodingBuffer[buffersize];
+  int lineNr = 0;
+
+  while (!feof(f)) {
+    lineNr++;
+    if (!fgets(line, sizeof(line), f)) {
+      if (feof(f)) break;
+      fclose(f);
+      throw core::posix_error(
+        core::format(_("Failed to read line %d in file \"%s\""),
+                     lineNr, filepath), errno);
+    }
+
+    if (lineNr == 1) {
+      if (strncmp(line, IDENTIFIER_STRING, strlen(IDENTIFIER_STRING)) == 0)
+        continue;
+      fclose(f);
+      throw std::runtime_error(core::format(
+        _("Configuration file %s is in an invalid format"), filepath));
+    }
+
+    if ((line[0] == '\n') || (line[0] == '#') || (line[0] == '\r'))
+      continue;
+
+    int len = strlen(line);
+    if (len > 0 && line[len-1] == '\n') { line[len-1] = '\0'; len--; }
+    if (len > 0 && line[len-1] == '\r') { line[len-1] = '\0'; len--; }
+    if (len == 0) continue;
+
+    char* value = strchr(line, '=');
+    if (value == nullptr) continue;
+    *value = '\0';
+    value++;
+
+    if (strcasecmp(line, "ServerName") == 0) {
+      if (decodeValue(value, decodingBuffer, sizeof(decodingBuffer)))
+        info.serverName = decodingBuffer;
+    } else if (strcasecmp(line, "ProfileName") == 0) {
+      if (decodeValue(value, decodingBuffer, sizeof(decodingBuffer)))
+        info.profileName = decodingBuffer;
+    } else if (strcasecmp(line, "Password") == 0) {
+      info.hasPassword = (strlen(value) > 0);
+    }
+  }
+
+  fclose(f);
+  return info;
+}
+
+std::string loadPasswordFromProfile(const char* filepath)
+{
+  FILE* f = fopen(filepath, "r");
+  if (!f)
+    return "";
+
+  const size_t buffersize = 256;
+  char line[buffersize];
+
+  while (!feof(f)) {
+    if (!fgets(line, sizeof(line), f)) break;
+
+    int len = strlen(line);
+    if (len > 0 && line[len-1] == '\n') { line[len-1] = '\0'; len--; }
+    if (len > 0 && line[len-1] == '\r') { line[len-1] = '\0'; len--; }
+
+    char* value = strchr(line, '=');
+    if (value == nullptr) continue;
+    *value = '\0';
+    value++;
+
+    if (strcasecmp(line, "Password") == 0) {
+      fclose(f);
+      return hexToObfuscatedPassword(value);
+    }
+  }
+
+  fclose(f);
+  return "";
+}
+
+std::vector<ProfileInfo> loadAllProfiles()
+{
+  std::vector<ProfileInfo> profiles;
+
+  std::string dir;
+  try {
+    dir = getProfilesDir();
+  } catch (std::exception&) {
+    return profiles;
+  }
+
+#ifdef _WIN32
+  std::string pattern = dir + "\\*.tigervnc";
+  WIN32_FIND_DATAW findData;
+  wchar_t wpattern[PATH_MAX];
+  fl_utf8towc(pattern.c_str(), (unsigned)pattern.size()+1, wpattern, PATH_MAX);
+
+  HANDLE hFind = FindFirstFileW(wpattern, &findData);
+  if (hFind == INVALID_HANDLE_VALUE)
+    return profiles;
+
+  do {
+    char filename[PATH_MAX];
+    fl_utf8fromwc(filename, PATH_MAX, findData.cFileName,
+                  (unsigned)wcslen(findData.cFileName)+1);
+    std::string filepath = dir + "\\" + filename;
+    try {
+      profiles.push_back(loadProfile(filepath.c_str()));
+    } catch (std::exception& e) {
+      vlog.error(_("Failed to load profile \"%s\": %s"),
+                 filepath.c_str(), e.what());
+    }
+  } while (FindNextFileW(hFind, &findData));
+
+  FindClose(hFind);
+#else
+  DIR* d = opendir(dir.c_str());
+  if (d == nullptr)
+    return profiles;
+
+  struct dirent* entry;
+  while ((entry = readdir(d)) != nullptr) {
+    std::string name = entry->d_name;
+    if (name.size() < 10 ||
+        name.substr(name.size() - 10) != ".tigervnc")
+      continue;
+
+    std::string filepath = dir + "/" + name;
+    try {
+      profiles.push_back(loadProfile(filepath.c_str()));
+    } catch (std::exception& e) {
+      vlog.error(_("Failed to load profile \"%s\": %s"),
+                 filepath.c_str(), e.what());
+    }
+  }
+
+  closedir(d);
+#endif
+
+  return profiles;
+}
+
+void deleteProfile(const char* filepath)
+{
+  if (remove(filepath) != 0)
+    throw core::posix_error(
+      core::format(_("Could not delete \"%s\""), filepath), errno);
+}
+
+void saveProfile(const char* servername, const char* profileName,
+                 const char* password)
+{
+  std::string host;
+  int port;
+
+  try {
+    network::getHostAndPort(servername, &host, &port);
+  } catch (std::exception&) {
+    host = servername;
+    port = 5900;
+  }
+
+  std::string dir = getProfilesDir();
+
+#ifdef _WIN32
+  wchar_t wdir[PATH_MAX];
+  fl_utf8towc(dir.c_str(), (unsigned)dir.size()+1, wdir, PATH_MAX);
+  CreateDirectoryW(wdir, nullptr);
+#else
+  mkdir(dir.c_str(), 0755);
+#endif
+
+  std::string filename = getProfileFilename(host.c_str(), port);
+  std::string filepath = dir + "/" + filename;
+
+  saveProfileToFile(filepath.c_str(), servername, profileName, password);
+}
 
 void saveViewerParameters(const char *filename, const char *servername) {
 
