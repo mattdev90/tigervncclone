@@ -66,7 +66,7 @@ core::BoolParameter
   edgeScroll("EdgeScroll",
              "Scroll the remote desktop when the mouse reaches the "
              "edge of the screen in fullscreen mode",
-             true);
+             false);
 core::BoolParameter
   dotWhenNoCursor("DotWhenNoCursor",
                   "[DEPRECATED] Show the dot cursor when the server "

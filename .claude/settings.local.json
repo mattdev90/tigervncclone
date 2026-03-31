@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash \"C:/Users/m_hue/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.6/skills/brainstorming/scripts/start-server.sh\" --project-dir \"D:/Coding/Tools/tigervnc\")",
+      "Bash(\"D:/Coding/Tools/tigervnc/vncviewer/miniz_export.h\":*)",
+      "mcp__plugin_context-mode_context-mode__ctx_index",
+      "Bash(git -C /d/Coding/Tools/tigervnc show 347f3229:vncviewer/Viewport.cxx)",
+      "Bash(git -C /d/Coding/Tools/tigervnc show 982a71af --stat)",
+      "Bash(git:*)",
+      "Skill(commit-commands:commit)",
+      "Bash(grep:*)"
+    ]
+  }
+}

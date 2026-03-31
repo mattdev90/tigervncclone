@@ -1,3 +1,14 @@
+programm starten (windows): msys2 ucrt
+cd /d/Coding/Tools/tigervnc/build
+
+in build:
+???
+    cmake -G "MinGW Makefiles" ..
+BUILD
+    mingw32-make -j$(nproc)
+RUN
+./vncviewer/vncviewer.exe
+
 # How to Build and Run TigerVNC on Windows
 
 ## One-time setup (do this once)
